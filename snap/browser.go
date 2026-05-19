@@ -1,10 +1,14 @@
 package snap
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
+	"sync"
+
+	"github.com/chromedp/chromedp"
 )
 
 var macOSChromePaths = []string{
@@ -100,4 +104,105 @@ func chromeNotFoundError() error {
 			"  export CHROME_PATH=/path/to/chrome",
 		hint,
 	)
+}
+
+// Browser is a reusable Chrome instance. Use NewBrowser when capturing
+// multiple pages to avoid the overhead of launching a new process per capture.
+type Browser struct {
+	allocCtx context.Context
+	cancel   context.CancelFunc
+	base     *Options
+}
+
+// NewBrowser launches a Chrome instance that can be reused across captures.
+func NewBrowser(opts ...Option) (*Browser, error) {
+	o := defaultOptions()
+	for _, opt := range opts {
+		opt(o)
+	}
+	allocCtx, cancel, err := newAllocator(o)
+	if err != nil {
+		return nil, err
+	}
+	return &Browser{allocCtx: allocCtx, cancel: cancel, base: o}, nil
+}
+
+// Close shuts down the underlying Chrome process.
+func (b *Browser) Close() {
+	b.cancel()
+}
+
+// Capture takes a screenshot of rawURL in a new tab, reusing the existing
+// Chrome process. Per-call options override the Browser's base options.
+func (b *Browser) Capture(rawURL string, opts ...Option) ([]byte, error) {
+	o := *b.base
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	ctx, cancel := chromedp.NewContext(b.allocCtx)
+	defer cancel()
+
+	ctx, cancelTimeout := context.WithTimeout(ctx, o.Timeout)
+	defer cancelTimeout()
+
+	var buf []byte
+	tasks, err := buildTasks(rawURL, &o, &buf)
+	if err != nil {
+		return nil, err
+	}
+	if err := chromedp.Run(ctx, tasks...); err != nil {
+		return nil, fmt.Errorf("capture %s: %w", rawURL, err)
+	}
+	return buf, nil
+}
+
+// CaptureResult holds the outcome of a single URL in a batch capture.
+type CaptureResult struct {
+	URL   string
+	Data  []byte
+	Error error
+}
+
+// CaptureAll captures all URLs concurrently, reusing the same Chrome process.
+// Concurrency is controlled via WithConcurrency (default 3).
+func (b *Browser) CaptureAll(urls []string, opts ...Option) ([]CaptureResult, error) {
+	o := *b.base
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	concurrency := o.Concurrency
+	if concurrency <= 0 {
+		concurrency = 3
+	}
+
+	type job struct {
+		index int
+		url   string
+	}
+
+	jobs := make(chan job, len(urls))
+	for i, u := range urls {
+		jobs <- job{i, u}
+	}
+	close(jobs)
+
+	results := make([]CaptureResult, len(urls))
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for range concurrency {
+		wg.Go(func() {
+			for j := range jobs {
+				sem <- struct{}{}
+				data, err := b.Capture(j.url, opts...)
+				results[j.index] = CaptureResult{URL: j.url, Data: data, Error: err}
+				<-sem
+			}
+		})
+	}
+
+	wg.Wait()
+	return results, nil
 }

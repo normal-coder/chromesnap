@@ -83,6 +83,9 @@ type Options struct {
 	RemoteDebuggerURL string
 	Headless          bool
 	IgnoreCertErrors  bool
+
+	// Batch
+	Concurrency int
 }
 
 // ClipRect defines a rectangular region to capture.
@@ -210,4 +213,8 @@ func WithHeadless(v bool) Option {
 
 func WithIgnoreCertErrors() Option {
 	return func(o *Options) { o.IgnoreCertErrors = true }
+}
+
+func WithConcurrency(n int) Option {
+	return func(o *Options) { o.Concurrency = n }
 }
