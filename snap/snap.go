@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/emulation"
@@ -103,6 +104,14 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 		}))
 	}
 
+	// Network idle: register listener BEFORE navigate to catch all requests
+	var waitIdle chromedp.Action
+	if o.WaitForNetwork {
+		setup, wait := networkIdleActions()
+		tasks = append(tasks, setup)
+		waitIdle = wait
+	}
+
 	// Basic auth via URL embedding
 	if o.BasicAuth != "" {
 		parts := strings.SplitN(o.BasicAuth, ":", 2)
@@ -146,9 +155,9 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 		}))
 	}
 
-	// Wait for network idle
-	if o.WaitForNetwork {
-		tasks = append(tasks, chromedp.ActionFunc(waitForNetworkIdle))
+	// Wait for network idle (post-navigate)
+	if waitIdle != nil {
+		tasks = append(tasks, waitIdle)
 	}
 
 	// Wait for selector
@@ -293,13 +302,62 @@ func parseCookieString(s string) cookieParsed {
 	return c
 }
 
-func waitForNetworkIdle(ctx context.Context) error {
-	timer := time.NewTimer(500 * time.Millisecond)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
+// networkIdleActions returns two actions: setup (register the CDP listener,
+// must run BEFORE Navigate) and wait (poll until idle, runs AFTER Navigate).
+func networkIdleActions() (setup, wait chromedp.Action) {
+	var (
+		mu       sync.Mutex
+		inflight int
+		lastIdle = time.Now()
+	)
+
+	setup = chromedp.ActionFunc(func(ctx context.Context) error {
+		if err := network.Enable().Do(ctx); err != nil {
+			return err
+		}
+		chromedp.ListenTarget(ctx, func(ev any) {
+			mu.Lock()
+			defer mu.Unlock()
+			switch ev.(type) {
+			case *network.EventRequestWillBeSent:
+				inflight++
+			case *network.EventLoadingFinished, *network.EventLoadingFailed:
+				if inflight > 0 {
+					inflight--
+				}
+				if inflight == 0 {
+					lastIdle = time.Now()
+				}
+			}
+		})
 		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	})
+
+	wait = chromedp.ActionFunc(func(ctx context.Context) error {
+		const (
+			idleThreshold = 500 * time.Millisecond
+			maxWait       = 10 * time.Second
+			poll          = 50 * time.Millisecond
+		)
+		deadline := time.Now().Add(maxWait)
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			if time.Now().After(deadline) {
+				return nil
+			}
+			mu.Lock()
+			n, idle := inflight, lastIdle
+			mu.Unlock()
+			if n == 0 && time.Since(idle) >= idleThreshold {
+				return nil
+			}
+			time.Sleep(poll)
+		}
+	})
+
+	return setup, wait
 }
