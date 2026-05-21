@@ -228,12 +228,15 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 	}
 
 	if o.FullPage {
-		// Scroll to get full page dimensions then capture
-		var pageW, pageH float64
-		if err := chromedp.Evaluate(`(function(){return [document.documentElement.scrollWidth, document.documentElement.scrollHeight]})()`, &[]any{&pageW, &pageH}); err == nil {
-			params = params.WithClip(&page.Viewport{
+		var dimensions []float64
+		_ = chromedp.Evaluate(
+			`[document.documentElement.scrollWidth, document.documentElement.scrollHeight]`,
+			&dimensions,
+		).Do(ctx)
+		if len(dimensions) == 2 {
+			params = params.WithCaptureBeyondViewport(true).WithClip(&page.Viewport{
 				X: 0, Y: 0,
-				Width: pageW, Height: pageH,
+				Width: dimensions[0], Height: dimensions[1],
 				Scale: 1,
 			})
 		}
