@@ -204,5 +204,15 @@ func (b *Browser) CaptureAll(urls []string, opts ...Option) ([]CaptureResult, er
 	}
 
 	wg.Wait()
+
+	var errCount int
+	for _, r := range results {
+		if r.Error != nil {
+			errCount++
+		}
+	}
+	if errCount > 0 {
+		return results, fmt.Errorf("%d of %d captures failed", errCount, len(urls))
+	}
 	return results, nil
 }

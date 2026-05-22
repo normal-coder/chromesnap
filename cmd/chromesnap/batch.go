@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -117,6 +118,9 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 	if gf.ignoreCertErrors {
 		baseOpts = append(baseOpts, snap.WithIgnoreCertErrors())
 	}
+	if gf.noHeadless {
+		baseOpts = append(baseOpts, snap.WithHeadless(false))
+	}
 
 	type result struct {
 		Index   int    `json:"index"`
@@ -146,7 +150,7 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 				sem <- struct{}{}
 				start := time.Now()
 				fileName := expandPattern(namePattern, j.index+1, j.url, format)
-				filePath := fmt.Sprintf("%s/%s", outputDir, fileName)
+				filePath := filepath.Join(outputDir, fileName)
 
 				err := snap.CaptureToFile(j.url, filePath, baseOpts...)
 				elapsed := time.Since(start).Round(time.Millisecond).String()

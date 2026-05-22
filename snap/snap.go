@@ -178,11 +178,10 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 	// Inject CSS
 	if o.CSS != "" {
 		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-			var res string
 			return chromedp.Evaluate(fmt.Sprintf(
 				`(function(){var s=document.createElement('style');s.textContent=%q;document.head.appendChild(s)})()`,
 				o.CSS,
-			), &res).Do(ctx)
+			), nil).Do(ctx)
 		}))
 	}
 
