@@ -26,6 +26,9 @@ jobs:
       - name: Set GO_VERSION env
         run: echo "GO_VERSION=$(go version | awk '{print $3}')" >> $GITHUB_ENV
 
+      - name: Install UPX
+        run: sudo apt-get install -y upx
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:

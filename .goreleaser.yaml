@@ -31,6 +31,13 @@ archives:
 checksum:
   name_template: checksums.txt
 
+upx:
+  - enabled: true
+    goos: [linux]
+    goarch: [amd64, arm64]
+    compress: "9"
+    lzma: true
+
 release:
   github:
     owner: normal-coder
