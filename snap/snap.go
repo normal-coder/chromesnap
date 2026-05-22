@@ -77,6 +77,13 @@ func newAllocator(o *Options) (context.Context, context.CancelFunc, error) {
 	if !o.Headless {
 		allocOpts = append(allocOpts, chromedp.Flag("headless", false))
 	}
+	// Always force color scheme explicitly so system theme never bleeds in.
+	// preferredColorScheme: 1 = light, 2 = dark
+	colorScheme := 1
+	if o.DarkMode {
+		colorScheme = 2
+	}
+	allocOpts = append(allocOpts, chromedp.Flag("blink-settings", fmt.Sprintf("preferredColorScheme=%d", colorScheme)))
 	if o.IgnoreCertErrors {
 		allocOpts = append(allocOpts, chromedp.Flag("ignore-certificate-errors", true))
 	}
@@ -95,14 +102,17 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 	width, height, dpr := resolveViewport(o)
 	tasks = append(tasks, chromedp.EmulateViewport(width, height, chromedp.EmulateScale(dpr)))
 
-	// Dark mode
+	// Always explicitly set color scheme so system theme never affects output.
+	// Default is light; -D / WithDarkMode() switches to dark.
+	colorSchemeValue := "light"
 	if o.DarkMode {
-		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-			return emulation.SetEmulatedMedia().WithFeatures([]*emulation.MediaFeature{
-				{Name: "prefers-color-scheme", Value: "dark"},
-			}).Do(ctx)
-		}))
+		colorSchemeValue = "dark"
 	}
+	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+		return emulation.SetEmulatedMedia().WithFeatures([]*emulation.MediaFeature{
+			{Name: "prefers-color-scheme", Value: colorSchemeValue},
+		}).Do(ctx)
+	}))
 
 	// Network idle: register listener BEFORE navigate to catch all requests
 	var waitIdle chromedp.Action
