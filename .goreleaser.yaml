@@ -42,7 +42,6 @@ release:
   github:
     owner: normal-coder
     name: chromesnap
-  use_existing_tag: true
 
 homebrew_casks:
   - name: chromesnap
