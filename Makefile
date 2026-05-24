@@ -71,7 +71,11 @@ release:
 	@echo ""
 	@printf "confirm release $(TAG)? [y/N] "; read ans; [ "$$ans" = "y" ] || { echo "aborted"; exit 1; }
 	@git-cliff --unreleased --tag $(TAG) -o /tmp/chromesnap-tag-msg.txt
-	@git-cliff --tag $(TAG) --prepend CHANGELOG.md
+	@if [ -f CHANGELOG.md ]; then \
+		git-cliff --unreleased --tag $(TAG) --prepend CHANGELOG.md; \
+	else \
+		git-cliff --tag $(TAG) -o CHANGELOG.md; \
+	fi
 	@git add CHANGELOG.md
 	@git commit -m "chore(release): $(TAG)"
 	@git tag -s $(TAG) -F /tmp/chromesnap-tag-msg.txt
