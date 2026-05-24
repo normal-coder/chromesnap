@@ -1,3 +1,9 @@
+## [1.0.2] - 2026-05-24
+
+### 🐛 Bug Fixes
+- *(batch)* Reuse Browser instance and fix goroutine leak on error
+- *(ci,batch)* Pin goreleaser to v2 and fix continue-on-error semantics
+
 ## [1.0.1] - 2026-05-24
 
 ### 🐛 Bug Fixes
