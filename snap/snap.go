@@ -117,7 +117,7 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 	// Network idle: register listener BEFORE navigate to catch all requests
 	var waitIdle chromedp.Action
 	if o.WaitForNetwork {
-		setup, wait := networkIdleActions()
+		setup, wait := networkIdleActions(o.NetworkIdleThreshold, o.NetworkIdleTimeout)
 		tasks = append(tasks, setup)
 		waitIdle = wait
 	}
@@ -324,7 +324,7 @@ func parseCookieString(s string) cookieParsed {
 
 // networkIdleActions returns two actions: setup (register the CDP listener,
 // must run BEFORE Navigate) and wait (poll until idle, runs AFTER Navigate).
-func networkIdleActions() (setup, wait chromedp.Action) {
+func networkIdleActions(idleThreshold, maxWait time.Duration) (setup, wait chromedp.Action) {
 	var (
 		mu       sync.Mutex
 		inflight int
@@ -354,11 +354,7 @@ func networkIdleActions() (setup, wait chromedp.Action) {
 	})
 
 	wait = chromedp.ActionFunc(func(ctx context.Context) error {
-		const (
-			idleThreshold = 500 * time.Millisecond
-			maxWait       = 10 * time.Second
-			poll          = 50 * time.Millisecond
-		)
+		const poll = 50 * time.Millisecond
 		deadline := time.Now().Add(maxWait)
 		for {
 			select {

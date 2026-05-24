@@ -28,9 +28,11 @@ type snapFlags struct {
 	selector string
 	clip     string
 
-	waitFor     string
-	waitNetwork bool
-	delay       time.Duration
+	waitFor              string
+	waitNetwork          bool
+	networkIdleThreshold time.Duration
+	networkIdleTimeout   time.Duration
+	delay                time.Duration
 	js          string
 	css         string
 
@@ -80,6 +82,8 @@ func addSnapFlags(cmd *cobra.Command) {
 	// Wait & interaction
 	f.StringP("wait-for", "w", "", "wait for CSS selector before capturing")
 	f.Bool("wait-network", false, "wait for network idle before capturing")
+	f.Duration("network-idle-threshold", 500*time.Millisecond, "silence window to consider network idle")
+	f.Duration("network-idle-timeout", 10*time.Second, "max time to wait for network idle")
 	f.DurationP("delay", "d", 0, "extra wait after page load (e.g. 2s, 500ms)")
 	f.String("js", "", "execute JavaScript after page load")
 	f.String("css", "", "inject CSS into the page")
@@ -109,6 +113,8 @@ func snapFlagsFrom(cmd *cobra.Command) *snapFlags {
 	sf.clip, _ = f.GetString("clip")
 	sf.waitFor, _ = f.GetString("wait-for")
 	sf.waitNetwork, _ = f.GetBool("wait-network")
+	sf.networkIdleThreshold, _ = f.GetDuration("network-idle-threshold")
+	sf.networkIdleTimeout, _ = f.GetDuration("network-idle-timeout")
 	sf.delay, _ = f.GetDuration("delay")
 	sf.js, _ = f.GetString("js")
 	sf.css, _ = f.GetString("css")
@@ -192,6 +198,12 @@ func buildSnapOptions(gf *globalFlags, sf *snapFlags) ([]snap.Option, error) {
 	}
 	if sf.waitNetwork {
 		opts = append(opts, snap.WithWaitForNetwork())
+		if sf.networkIdleThreshold > 0 {
+			opts = append(opts, snap.WithNetworkIdleThreshold(sf.networkIdleThreshold))
+		}
+		if sf.networkIdleTimeout > 0 {
+			opts = append(opts, snap.WithNetworkIdleTimeout(sf.networkIdleTimeout))
+		}
 	}
 	if sf.delay > 0 {
 		opts = append(opts, snap.WithDelay(sf.delay))

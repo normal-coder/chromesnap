@@ -61,12 +61,14 @@ type Options struct {
 	Clip     *ClipRect
 
 	// Wait & interaction
-	WaitForSelector string
-	WaitForNetwork  bool
-	Delay           time.Duration
-	Timeout         time.Duration
-	JS              string
-	CSS             string
+	WaitForSelector      string
+	WaitForNetwork       bool
+	NetworkIdleThreshold time.Duration
+	NetworkIdleTimeout   time.Duration
+	Delay                time.Duration
+	Timeout              time.Duration
+	JS                   string
+	CSS                  string
 
 	// Theme
 	DarkMode bool
@@ -98,13 +100,15 @@ type ClipRect struct {
 
 func defaultOptions() *Options {
 	return &Options{
-		Width:   1920,
-		Height:  1080,
-		DPR:     1.0,
-		Format:  FormatPNG,
-		Quality: 85,
-		Timeout: 30 * time.Second,
-		Headless: true,
+		Width:                1920,
+		Height:               1080,
+		DPR:                  1.0,
+		Format:               FormatPNG,
+		Quality:              85,
+		Timeout:              30 * time.Second,
+		Headless:             true,
+		NetworkIdleThreshold: 500 * time.Millisecond,
+		NetworkIdleTimeout:   10 * time.Second,
 	}
 }
 
@@ -152,6 +156,14 @@ func WithWaitFor(sel string) Option {
 
 func WithWaitForNetwork() Option {
 	return func(o *Options) { o.WaitForNetwork = true }
+}
+
+func WithNetworkIdleThreshold(d time.Duration) Option {
+	return func(o *Options) { o.NetworkIdleThreshold = d }
+}
+
+func WithNetworkIdleTimeout(d time.Duration) Option {
+	return func(o *Options) { o.NetworkIdleTimeout = d }
 }
 
 func WithDelay(d time.Duration) Option {
