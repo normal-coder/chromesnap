@@ -43,15 +43,19 @@ release:
     owner: normal-coder
     name: chromesnap
 
-homebrew_formulae:
+homebrew_casks:
   - name: chromesnap
-    directory: Formula
+    directory: Casks
     repository:
       owner: normal-coder
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    url:
+      verified: github.com/normal-coder/chromesnap
     homepage: https://github.com/normal-coder/chromesnap
     description: Headless Chrome screenshot CLI and Go library
     license: MIT
-    install: |
-      bin.install "chromesnap"
+    postflight: |
+      system_command "/usr/bin/xattr",
+                     args: ["-d", "com.apple.quarantine", "#{staged_path}/chromesnap"],
+                     sudo: false
