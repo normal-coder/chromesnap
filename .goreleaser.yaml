@@ -4,6 +4,10 @@ before:
   hooks:
     - go mod tidy
 
+changelog:
+  use: git-cliff
+  abbrev: -1
+
 builds:
   - binary: chromesnap
     main: ./cmd/chromesnap

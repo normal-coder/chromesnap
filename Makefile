@@ -2,15 +2,16 @@ BINARY     := chromesnap
 CMD        := ./cmd/chromesnap
 BIN_DIR    := ./bin
 
-VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-GO_VERSION := $(shell go version | awk '{print $$3}')
-LDFLAGS    := -ldflags "-s -w \
+VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+NEXT_VERSION := $(shell git-cliff --bumped-version 2>/dev/null)
+BUILD_DATE   := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+GO_VERSION   := $(shell go version | awk '{print $$3}')
+LDFLAGS      := -ldflags "-s -w \
   -X main.version=$(VERSION) \
   -X main.buildDate=$(BUILD_DATE) \
   -X main.goVersion=$(GO_VERSION)"
 
-.PHONY: build install run clean fmt vet tidy check snapshot release
+.PHONY: build install run clean fmt vet tidy check snapshot next-version release
 
 ## build: compile binary for current platform → ./bin/chromesnap
 build:
@@ -52,6 +53,27 @@ check: fmt vet tidy
 snapshot:
 	goreleaser build --snapshot --clean
 
-## release: full release via goreleaser (intended for CI on tag push)
+## next-version: show what the next version would be based on commits
+next-version:
+	@echo "current: $(VERSION)"
+	@echo "next:    $(NEXT_VERSION)"
+	@echo "---"
+	@git-cliff --unreleased
+
+## release: tag and push to trigger CI release
+##   auto-bumps version from commits; override with: make release VERSION=v2.0.0
 release:
-	goreleaser release --clean
+	$(eval TAG := $(if $(VERSION_OVERRIDE),$(VERSION_OVERRIDE),$(NEXT_VERSION)))
+	@if [ -z "$(TAG)" ]; then echo "error: could not determine next version" >&2; exit 1; fi
+	@echo "==> releasing $(TAG)"
+	@echo ""
+	@git-cliff --unreleased --tag $(TAG)
+	@echo ""
+	@printf "confirm release $(TAG)? [y/N] "; read ans; [ "$$ans" = "y" ] || { echo "aborted"; exit 1; }
+	@git-cliff --unreleased --tag $(TAG) -o /tmp/chromesnap-tag-msg.txt
+	@git-cliff --tag $(TAG) --prepend CHANGELOG.md
+	@git add CHANGELOG.md
+	@git commit -m "chore(release): $(TAG)"
+	@git tag -s $(TAG) -F /tmp/chromesnap-tag-msg.txt
+	@git push origin main --follow-tags
+	@echo "==> pushed $(TAG), CI will build and publish the release"
