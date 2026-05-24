@@ -236,6 +236,8 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 		params = params.WithQuality(quality)
 	}
 
+	_, _, dpr := resolveViewport(o)
+
 	if o.FullPage {
 		var dimensions []float64
 		_ = chromedp.Evaluate(
@@ -246,7 +248,7 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 			params = params.WithCaptureBeyondViewport(true).WithClip(&page.Viewport{
 				X: 0, Y: 0,
 				Width: dimensions[0], Height: dimensions[1],
-				Scale: 1,
+				Scale: dpr,
 			})
 		}
 	} else if o.Selector != "" {
@@ -260,13 +262,13 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 		params = params.WithClip(&page.Viewport{
 			X: rect["x"], Y: rect["y"],
 			Width: rect["w"], Height: rect["h"],
-			Scale: 1,
+			Scale: dpr,
 		})
 	} else if o.Clip != nil {
 		params = params.WithClip(&page.Viewport{
 			X: o.Clip.X, Y: o.Clip.Y,
 			Width: o.Clip.Width, Height: o.Clip.Height,
-			Scale: 1,
+			Scale: dpr,
 		})
 	}
 
