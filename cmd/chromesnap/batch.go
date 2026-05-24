@@ -121,6 +121,13 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 	if gf.noHeadless {
 		baseOpts = append(baseOpts, snap.WithHeadless(false))
 	}
+	baseOpts = append(baseOpts, snap.WithConcurrency(concurrency))
+
+	browser, err := snap.NewBrowser(baseOpts...)
+	if err != nil {
+		return fmt.Errorf("launching browser: %w", err)
+	}
+	defer browser.Close()
 
 	type result struct {
 		Index   int    `json:"index"`
@@ -152,14 +159,19 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 				fileName := expandPattern(namePattern, j.index+1, j.url, format)
 				filePath := filepath.Join(outputDir, fileName)
 
-				err := snap.CaptureToFile(j.url, filePath, baseOpts...)
+				data, captureErr := browser.Capture(j.url)
 				elapsed := time.Since(start).Round(time.Millisecond).String()
 
 				r := result{Index: j.index + 1, URL: j.url, Elapsed: elapsed}
-				if err != nil {
-					r.Error = err.Error()
+				if captureErr != nil {
+					r.Error = captureErr.Error()
 					if !gf.quiet {
-						fmt.Fprintf(os.Stderr, "[%d/%d] ERROR %s: %v\n", j.index+1, len(urls), j.url, err)
+						fmt.Fprintf(os.Stderr, "[%d/%d] ERROR %s: %v\n", j.index+1, len(urls), j.url, captureErr)
+					}
+				} else if writeErr := os.WriteFile(filePath, data, 0o644); writeErr != nil {
+					r.Error = writeErr.Error()
+					if !gf.quiet {
+						fmt.Fprintf(os.Stderr, "[%d/%d] ERROR %s: %v\n", j.index+1, len(urls), j.url, writeErr)
 					}
 				} else {
 					r.File = filePath
@@ -175,13 +187,14 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 
 	results := make([]result, len(urls))
 	var hasError bool
+	var firstErr error
 	for range urls {
 		r := <-done
 		results[r.Index-1] = r
 		if r.Error != "" {
 			hasError = true
-			if !continueOnErr {
-				return fmt.Errorf("batch stopped at URL %d: %s", r.Index, r.Error)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("batch failed at URL %d: %s", r.Index, r.Error)
 			}
 		}
 	}
@@ -192,6 +205,9 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 	}
 
 	if hasError {
+		if !continueOnErr {
+			return firstErr
+		}
 		return fmt.Errorf("one or more URLs failed")
 	}
 	return nil

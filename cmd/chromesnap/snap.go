@@ -220,9 +220,7 @@ func buildSnapOptions(gf *globalFlags, sf *snapFlags) ([]snap.Option, error) {
 	}
 
 	opts = append(opts, snap.WithFormat(snap.Format(sf.format)))
-	if sf.quality != 85 {
-		opts = append(opts, snap.WithQuality(sf.quality))
-	}
+	opts = append(opts, snap.WithQuality(sf.quality))
 
 	if gf.chrome != "" {
 		opts = append(opts, snap.WithChromePath(gf.chrome))

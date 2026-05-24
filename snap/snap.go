@@ -251,11 +251,10 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 		}
 	} else if o.Selector != "" {
 		var rect map[string]float64
-		err := chromedp.Run(ctx, chromedp.Evaluate(fmt.Sprintf(
+		if err := chromedp.Evaluate(fmt.Sprintf(
 			`(function(){var r=document.querySelector(%q).getBoundingClientRect();return {x:r.left,y:r.top,w:r.width,h:r.height}})()`,
 			o.Selector,
-		), &rect))
-		if err != nil {
+		), &rect).Do(ctx); err != nil {
 			return fmt.Errorf("selector %q not found: %w", o.Selector, err)
 		}
 		params = params.WithClip(&page.Viewport{
