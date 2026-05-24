@@ -4,10 +4,6 @@ before:
   hooks:
     - go mod tidy
 
-changelog:
-  use: git-cliff
-  abbrev: -1
-
 builds:
   - binary: chromesnap
     main: ./cmd/chromesnap
@@ -26,7 +22,7 @@ builds:
       - -X main.goVersion={{.Env.GO_VERSION}}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
@@ -46,15 +42,17 @@ release:
   github:
     owner: normal-coder
     name: chromesnap
+  use_existing_tag: true
 
-brews:
+homebrew_casks:
   - name: chromesnap
+    directory: Casks
     repository:
       owner: normal-coder
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    url:
+      verified: github.com/normal-coder/chromesnap
     homepage: https://github.com/normal-coder/chromesnap
     description: Headless Chrome screenshot CLI and Go library
     license: MIT
-    install: bin.install "chromesnap"
-    test: system "#{bin}/chromesnap version"
