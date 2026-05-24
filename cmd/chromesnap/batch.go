@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -150,10 +151,15 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 
 	done := make(chan result, len(urls))
 	sem := make(chan struct{}, concurrency)
+	var stopped atomic.Bool
 
 	for range concurrency {
 		go func() {
 			for j := range jobs {
+				if stopped.Load() {
+					done <- result{Index: j.index + 1, URL: j.url, Error: "skipped", Elapsed: "0s"}
+					continue
+				}
 				sem <- struct{}{}
 				start := time.Now()
 				fileName := expandPattern(namePattern, j.index+1, j.url, format)
@@ -168,10 +174,16 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 					if !gf.quiet {
 						fmt.Fprintf(os.Stderr, "[%d/%d] ERROR %s: %v\n", j.index+1, len(urls), j.url, captureErr)
 					}
+					if !continueOnErr {
+						stopped.Store(true)
+					}
 				} else if writeErr := os.WriteFile(filePath, data, 0o644); writeErr != nil {
 					r.Error = writeErr.Error()
 					if !gf.quiet {
 						fmt.Fprintf(os.Stderr, "[%d/%d] ERROR %s: %v\n", j.index+1, len(urls), j.url, writeErr)
+					}
+					if !continueOnErr {
+						stopped.Store(true)
 					}
 				} else {
 					r.File = filePath
@@ -191,7 +203,7 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 	for range urls {
 		r := <-done
 		results[r.Index-1] = r
-		if r.Error != "" {
+		if r.Error != "" && r.Error != "skipped" {
 			hasError = true
 			if firstErr == nil {
 				firstErr = fmt.Errorf("batch failed at URL %d: %s", r.Index, r.Error)
