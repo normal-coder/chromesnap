@@ -159,9 +159,12 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 	for _, cookie := range o.Cookies {
 		c := parseCookieString(cookie)
 		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-			return network.SetCookie(c.name, c.value).
-				WithDomain(c.domain).
-				Do(ctx)
+			params := network.SetCookie(c.name, c.value).
+				WithDomain(c.domain)
+			if c.path != "" {
+				params = params.WithPath(c.path)
+			}
+			return params.Do(ctx)
 		}))
 	}
 
@@ -240,10 +243,12 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 
 	if o.FullPage {
 		var dimensions []float64
-		_ = chromedp.Evaluate(
+		if err := chromedp.Evaluate(
 			`[document.documentElement.scrollWidth, document.documentElement.scrollHeight]`,
 			&dimensions,
-		).Do(ctx)
+		).Do(ctx); err != nil {
+			return fmt.Errorf("full-page: failed to get page dimensions: %w", err)
+		}
 		if len(dimensions) == 2 {
 			params = params.WithCaptureBeyondViewport(true).WithClip(&page.Viewport{
 				X: 0, Y: 0,
@@ -291,7 +296,7 @@ func resolveViewport(o *Options) (width, height int64, dpr float64) {
 }
 
 type cookieParsed struct {
-	name, value, domain string
+	name, value, domain, path string
 }
 
 func parseCookieString(s string) cookieParsed {
@@ -309,6 +314,8 @@ func parseCookieString(s string) cookieParsed {
 			lower := strings.ToLower(part)
 			if strings.HasPrefix(lower, "domain=") {
 				c.domain = strings.TrimSpace(part[7:])
+			} else if strings.HasPrefix(lower, "path=") {
+				c.path = strings.TrimSpace(part[5:])
 			}
 		}
 	}
