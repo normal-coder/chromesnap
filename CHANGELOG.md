@@ -7,6 +7,17 @@
 ### 🐛 Bug Fixes
 - *(snap)* Use actual DPR as Scale in full-page, selector and clip captures
 - *(snap)* Surface full-page dimension error, parse cookie path attribute
+- *(ci)* Use hooks.post.install for homebrew_casks (GoReleaser v2.13+)
+
+## [1.1.0] - 2026-05-28
+
+### 🚀 Features
+- *(snap)* Expose network idle threshold and timeout as options
+
+
+### 🐛 Bug Fixes
+- *(snap)* Use actual DPR as Scale in full-page, selector and clip captures
+- *(snap)* Surface full-page dimension error, parse cookie path attribute
 
 ## [1.0.2] - 2026-05-24
 
