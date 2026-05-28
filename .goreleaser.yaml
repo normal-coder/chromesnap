@@ -55,7 +55,9 @@ homebrew_casks:
     homepage: https://github.com/normal-coder/chromesnap
     description: Headless Chrome screenshot CLI and Go library
     license: MIT
-    postflight: |
-      system_command "/usr/bin/xattr",
-                     args: ["-d", "com.apple.quarantine", "#{staged_path}/chromesnap"],
-                     sudo: false
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/chromesnap"]
+          end
