@@ -249,6 +249,9 @@ func buildSnapOptions(gf *globalFlags, sf *snapFlags) ([]snap.Option, error) {
 	if gf.ignoreCertErrors {
 		opts = append(opts, snap.WithIgnoreCertErrors())
 	}
+	if gf.verbose > 0 {
+		opts = append(opts, snap.WithVerbose(gf.verbose))
+	}
 
 	return opts, nil
 }

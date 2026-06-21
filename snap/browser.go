@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/chromedp/chromedp"
 )
@@ -140,20 +141,26 @@ func (b *Browser) Capture(rawURL string, opts ...Option) ([]byte, error) {
 		opt(&o)
 	}
 
-	ctx, cancel := chromedp.NewContext(b.allocCtx)
+	vlog := newVLogger(&o)
+	vlog.printf(1, "session start url=%s timeout=%s", rawURL, o.Timeout)
+	t0 := time.Now()
+
+	ctx, cancel := chromedp.NewContext(b.allocCtx, chromedpCtxOpts(&o)...)
 	defer cancel()
 
 	ctx, cancelTimeout := context.WithTimeout(ctx, o.Timeout)
 	defer cancelTimeout()
 
 	var buf []byte
-	tasks, err := buildTasks(rawURL, &o, &buf)
+	tasks, err := buildTasks(rawURL, &o, &buf, vlog)
 	if err != nil {
 		return nil, err
 	}
 	if err := chromedp.Run(ctx, tasks...); err != nil {
+		vlog.printf(1, "session failed after %s: %v", time.Since(t0).Round(time.Millisecond), err)
 		return nil, fmt.Errorf("capture %s: %w", rawURL, err)
 	}
+	vlog.printf(1, "session done in %s (%d bytes)", time.Since(t0).Round(time.Millisecond), len(buf))
 	return buf, nil
 }
 

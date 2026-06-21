@@ -1,6 +1,9 @@
 package snap
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 // Format represents the screenshot output format.
 type Format string
@@ -88,6 +91,10 @@ type Options struct {
 
 	// Batch
 	Concurrency int
+
+	// Diagnostics
+	Verbose   int       // 0=off, 1=snap events, 2=+chromedp CDP debug
+	LogOutput io.Writer // where verbose logs go; defaults to os.Stderr
 }
 
 // ClipRect defines a rectangular region to capture.
@@ -229,4 +236,16 @@ func WithIgnoreCertErrors() Option {
 
 func WithConcurrency(n int) Option {
 	return func(o *Options) { o.Concurrency = n }
+}
+
+// WithVerbose enables diagnostic logging. level=1 logs snap's own pipeline
+// events (navigate, wait, network idle, screenshot); level>=2 additionally
+// forwards chromedp's CDP debug output. Use WithLogOutput to redirect.
+func WithVerbose(level int) Option {
+	return func(o *Options) { o.Verbose = level }
+}
+
+// WithLogOutput sets the writer used for verbose logging (defaults to stderr).
+func WithLogOutput(w io.Writer) Option {
+	return func(o *Options) { o.LogOutput = w }
 }

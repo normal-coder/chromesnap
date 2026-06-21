@@ -3,6 +3,7 @@ package snap
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -40,21 +41,27 @@ func capture(rawURL string, o *Options) ([]byte, error) {
 	}
 	defer cancelAlloc()
 
-	ctx, cancelCtx := chromedp.NewContext(allocCtx)
+	vlog := newVLogger(o)
+	vlog.printf(1, "session start url=%s timeout=%s", rawURL, o.Timeout)
+	t0 := time.Now()
+
+	ctx, cancelCtx := chromedp.NewContext(allocCtx, chromedpCtxOpts(o)...)
 	defer cancelCtx()
 
 	ctx, cancelTimeout := context.WithTimeout(ctx, o.Timeout)
 	defer cancelTimeout()
 
 	var buf []byte
-	tasks, err := buildTasks(rawURL, o, &buf)
+	tasks, err := buildTasks(rawURL, o, &buf, vlog)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := chromedp.Run(ctx, tasks...); err != nil {
+		vlog.printf(1, "session failed after %s: %v", time.Since(t0).Round(time.Millisecond), err)
 		return nil, fmt.Errorf("capture %s: %w", rawURL, err)
 	}
+	vlog.printf(1, "session done in %s (%d bytes)", time.Since(t0).Round(time.Millisecond), len(buf))
 	return buf, nil
 }
 
@@ -95,11 +102,12 @@ func newAllocator(o *Options) (context.Context, context.CancelFunc, error) {
 	return ctx, cancel, nil
 }
 
-func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) {
+func buildTasks(rawURL string, o *Options, buf *[]byte, vlog *vLogger) (chromedp.Tasks, error) {
 	var tasks chromedp.Tasks
 
 	// Viewport / device emulation
 	width, height, dpr := resolveViewport(o)
+	vlog.printf(1, "viewport %dx%d dpr=%g dark=%t device=%q", width, height, dpr, o.DarkMode, o.Device)
 	tasks = append(tasks, chromedp.EmulateViewport(width, height, chromedp.EmulateScale(dpr)))
 
 	// Always explicitly set color scheme so system theme never affects output.
@@ -117,7 +125,7 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 	// Network idle: register listener BEFORE navigate to catch all requests
 	var waitIdle chromedp.Action
 	if o.WaitForNetwork {
-		setup, wait := networkIdleActions(o.NetworkIdleThreshold, o.NetworkIdleTimeout)
+		setup, wait := networkIdleActions(o.NetworkIdleThreshold, o.NetworkIdleTimeout, vlog)
 		tasks = append(tasks, setup)
 		waitIdle = wait
 	}
@@ -153,7 +161,15 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 	}
 
 	// Navigate
+	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+		vlog.printf(1, "navigate %s", rawURL)
+		return nil
+	}))
 	tasks = append(tasks, chromedp.Navigate(rawURL))
+	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+		vlog.printf(1, "navigate done")
+		return nil
+	}))
 
 	// Cookies (set after navigation so domain is known)
 	for _, cookie := range o.Cookies {
@@ -175,7 +191,15 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 
 	// Wait for selector
 	if o.WaitForSelector != "" {
+		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+			vlog.printf(1, "wait visible selector=%q", o.WaitForSelector)
+			return nil
+		}))
 		tasks = append(tasks, chromedp.WaitVisible(o.WaitForSelector))
+		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+			vlog.printf(1, "wait visible done")
+			return nil
+		}))
 	}
 
 	// Inject CSS
@@ -196,19 +220,25 @@ func buildTasks(rawURL string, o *Options, buf *[]byte) (chromedp.Tasks, error) 
 
 	// Delay
 	if o.Delay > 0 {
+		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+			vlog.printf(1, "delay %s", o.Delay)
+			return nil
+		}))
 		tasks = append(tasks, chromedp.Sleep(o.Delay))
 	}
 
 	// Screenshot
-	tasks = append(tasks, screenshotAction(o, buf))
+	tasks = append(tasks, screenshotAction(o, buf, vlog))
 
 	return tasks, nil
 }
 
-func screenshotAction(o *Options, buf *[]byte) chromedp.Action {
+func screenshotAction(o *Options, buf *[]byte, vlog *vLogger) chromedp.Action {
 	switch o.Format {
 	case FormatPDF:
 		return chromedp.ActionFunc(func(ctx context.Context) error {
+			vlog.printf(1, "screenshot format=pdf")
+			t := time.Now()
 			data, _, err := page.PrintToPDF().
 				WithPrintBackground(true).
 				Do(ctx)
@@ -216,24 +246,25 @@ func screenshotAction(o *Options, buf *[]byte) chromedp.Action {
 				return err
 			}
 			*buf = data
+			vlog.printf(1, "screenshot done bytes=%d in %s", len(data), time.Since(t).Round(time.Millisecond))
 			return nil
 		})
 	case FormatJPEG:
 		return chromedp.ActionFunc(func(ctx context.Context) error {
-			return captureScreenshot(ctx, o, buf, page.CaptureScreenshotFormatJpeg, int64(o.Quality))
+			return captureScreenshot(ctx, o, buf, page.CaptureScreenshotFormatJpeg, int64(o.Quality), vlog)
 		})
 	case FormatWebP:
 		return chromedp.ActionFunc(func(ctx context.Context) error {
-			return captureScreenshot(ctx, o, buf, page.CaptureScreenshotFormatWebp, int64(o.Quality))
+			return captureScreenshot(ctx, o, buf, page.CaptureScreenshotFormatWebp, int64(o.Quality), vlog)
 		})
 	default: // PNG
 		return chromedp.ActionFunc(func(ctx context.Context) error {
-			return captureScreenshot(ctx, o, buf, page.CaptureScreenshotFormatPng, 0)
+			return captureScreenshot(ctx, o, buf, page.CaptureScreenshotFormatPng, 0, vlog)
 		})
 	}
 }
 
-func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page.CaptureScreenshotFormat, quality int64) error {
+func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page.CaptureScreenshotFormat, quality int64, vlog *vLogger) error {
 	params := page.CaptureScreenshot().WithFormat(format)
 	if quality > 0 {
 		params = params.WithQuality(quality)
@@ -241,7 +272,9 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 
 	_, _, dpr := resolveViewport(o)
 
+	mode := "viewport"
 	if o.FullPage {
+		mode = "full-page"
 		var dimensions []float64
 		if err := chromedp.Evaluate(
 			`[document.documentElement.scrollWidth, document.documentElement.scrollHeight]`,
@@ -250,6 +283,7 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 			return fmt.Errorf("full-page: failed to get page dimensions: %w", err)
 		}
 		if len(dimensions) == 2 {
+			vlog.printf(1, "full-page dimensions=%gx%g", dimensions[0], dimensions[1])
 			params = params.WithCaptureBeyondViewport(true).WithClip(&page.Viewport{
 				X: 0, Y: 0,
 				Width: dimensions[0], Height: dimensions[1],
@@ -257,6 +291,7 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 			})
 		}
 	} else if o.Selector != "" {
+		mode = "selector"
 		var rect map[string]float64
 		if err := chromedp.Evaluate(fmt.Sprintf(
 			`(function(){var r=document.querySelector(%q).getBoundingClientRect();return {x:r.left,y:r.top,w:r.width,h:r.height}})()`,
@@ -264,12 +299,14 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 		), &rect).Do(ctx); err != nil {
 			return fmt.Errorf("selector %q not found: %w", o.Selector, err)
 		}
+		vlog.printf(1, "selector %q rect=%gx%g@%g,%g", o.Selector, rect["w"], rect["h"], rect["x"], rect["y"])
 		params = params.WithClip(&page.Viewport{
 			X: rect["x"], Y: rect["y"],
 			Width: rect["w"], Height: rect["h"],
 			Scale: dpr,
 		})
 	} else if o.Clip != nil {
+		mode = "clip"
 		params = params.WithClip(&page.Viewport{
 			X: o.Clip.X, Y: o.Clip.Y,
 			Width: o.Clip.Width, Height: o.Clip.Height,
@@ -277,11 +314,14 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 		})
 	}
 
+	vlog.printf(1, "screenshot format=%s mode=%s", format, mode)
+	t := time.Now()
 	data, err := params.Do(ctx)
 	if err != nil {
 		return err
 	}
 	*buf = data
+	vlog.printf(1, "screenshot done bytes=%d in %s", len(data), time.Since(t).Round(time.Millisecond))
 	return nil
 }
 
@@ -324,10 +364,11 @@ func parseCookieString(s string) cookieParsed {
 
 // networkIdleActions returns two actions: setup (register the CDP listener,
 // must run BEFORE Navigate) and wait (poll until idle, runs AFTER Navigate).
-func networkIdleActions(idleThreshold, maxWait time.Duration) (setup, wait chromedp.Action) {
+func networkIdleActions(idleThreshold, maxWait time.Duration, vlog *vLogger) (setup, wait chromedp.Action) {
 	var (
 		mu       sync.Mutex
 		inflight int
+		peak     int
 		lastIdle = time.Now()
 	)
 
@@ -341,6 +382,9 @@ func networkIdleActions(idleThreshold, maxWait time.Duration) (setup, wait chrom
 			switch ev.(type) {
 			case *network.EventRequestWillBeSent:
 				inflight++
+				if inflight > peak {
+					peak = inflight
+				}
 			case *network.EventLoadingFinished, *network.EventLoadingFailed:
 				if inflight > 0 {
 					inflight--
@@ -350,12 +394,14 @@ func networkIdleActions(idleThreshold, maxWait time.Duration) (setup, wait chrom
 				}
 			}
 		})
+		vlog.printf(1, "network idle listener armed threshold=%s timeout=%s", idleThreshold, maxWait)
 		return nil
 	})
 
 	wait = chromedp.ActionFunc(func(ctx context.Context) error {
 		const poll = 50 * time.Millisecond
-		deadline := time.Now().Add(maxWait)
+		start := time.Now()
+		deadline := start.Add(maxWait)
 		for {
 			select {
 			case <-ctx.Done():
@@ -363,12 +409,17 @@ func networkIdleActions(idleThreshold, maxWait time.Duration) (setup, wait chrom
 			default:
 			}
 			if time.Now().After(deadline) {
+				mu.Lock()
+				n := inflight
+				mu.Unlock()
+				vlog.printf(1, "network idle timeout after %s inflight=%d peak=%d", maxWait, n, peak)
 				return nil
 			}
 			mu.Lock()
 			n, idle := inflight, lastIdle
 			mu.Unlock()
 			if n == 0 && time.Since(idle) >= idleThreshold {
+				vlog.printf(1, "network idle reached in %s peak=%d", time.Since(start).Round(time.Millisecond), peak)
 				return nil
 			}
 			time.Sleep(poll)
@@ -376,4 +427,51 @@ func networkIdleActions(idleThreshold, maxWait time.Duration) (setup, wait chrom
 	})
 
 	return setup, wait
+}
+
+// vLogger is a leveled logger used for verbose diagnostic output.
+// A nil receiver is a no-op.
+type vLogger struct {
+	level int
+	log   *log.Logger
+}
+
+func newVLogger(o *Options) *vLogger {
+	if o == nil || o.Verbose <= 0 {
+		return nil
+	}
+	w := o.LogOutput
+	if w == nil {
+		w = os.Stderr
+	}
+	return &vLogger{
+		level: o.Verbose,
+		log:   log.New(w, "[chromesnap] ", log.LstdFlags|log.Lmicroseconds),
+	}
+}
+
+func (v *vLogger) printf(minLevel int, format string, args ...any) {
+	if v == nil || v.level < minLevel {
+		return
+	}
+	v.log.Printf(format, args...)
+}
+
+// chromedpCtxOpts returns chromedp.ContextOption values reflecting Verbose
+// level. At level>=2, chromedp's CDP-protocol debug/log/error output is
+// forwarded to the configured log writer.
+func chromedpCtxOpts(o *Options) []chromedp.ContextOption {
+	if o == nil || o.Verbose < 2 {
+		return nil
+	}
+	w := o.LogOutput
+	if w == nil {
+		w = os.Stderr
+	}
+	lg := log.New(w, "[chromedp] ", log.LstdFlags|log.Lmicroseconds)
+	return []chromedp.ContextOption{
+		chromedp.WithLogf(lg.Printf),
+		chromedp.WithDebugf(lg.Printf),
+		chromedp.WithErrorf(lg.Printf),
+	}
 }

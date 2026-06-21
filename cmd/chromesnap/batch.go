@@ -122,6 +122,9 @@ func runBatch(cmd *cobra.Command, args []string, gf *globalFlags) error {
 	if gf.noHeadless {
 		baseOpts = append(baseOpts, snap.WithHeadless(false))
 	}
+	if gf.verbose > 0 {
+		baseOpts = append(baseOpts, snap.WithVerbose(gf.verbose))
+	}
 	baseOpts = append(baseOpts, snap.WithConcurrency(concurrency))
 
 	browser, err := snap.NewBrowser(baseOpts...)

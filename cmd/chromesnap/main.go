@@ -23,6 +23,7 @@ type globalFlags struct {
 	ignoreCertErrors bool
 	timeout          time.Duration
 	quiet            bool
+	verbose          int
 }
 
 func main() {
@@ -66,4 +67,5 @@ func addGlobalFlags(cmd *cobra.Command, gf *globalFlags) {
 	pf.BoolVar(&gf.ignoreCertErrors, "ignore-cert-errors", false, "ignore TLS certificate errors")
 	pf.DurationVarP(&gf.timeout, "timeout", "t", 30*time.Second, "per-page timeout")
 	pf.BoolVarP(&gf.quiet, "quiet", "q", false, "suppress log output")
+	pf.CountVarP(&gf.verbose, "verbose", "v", "verbose diagnostics (-v: snap events, -vv: + chromedp CDP debug)")
 }
