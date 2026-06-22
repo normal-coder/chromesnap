@@ -106,7 +106,10 @@ func buildTasks(rawURL string, o *Options, buf *[]byte, vlog *vLogger) (chromedp
 	var tasks chromedp.Tasks
 
 	// Viewport / device emulation
-	width, height, dpr := resolveViewport(o)
+	width, height, dpr, err := resolveViewport(o)
+	if err != nil {
+		return nil, err
+	}
 	vlog.printf(1, "viewport %dx%d dpr=%g dark=%t device=%q", width, height, dpr, o.DarkMode, o.Device)
 	tasks = append(tasks, chromedp.EmulateViewport(width, height, chromedp.EmulateScale(dpr)))
 
@@ -270,7 +273,10 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 		params = params.WithQuality(quality)
 	}
 
-	_, _, dpr := resolveViewport(o)
+	_, _, dpr, err := resolveViewport(o)
+	if err != nil {
+		return err
+	}
 
 	mode := "viewport"
 	if o.FullPage {
@@ -326,12 +332,14 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 	return nil
 }
 
-func resolveViewport(o *Options) (width, height int64, dpr float64) {
+func resolveViewport(o *Options) (width, height int64, dpr float64, err error) {
 	width, height, dpr = o.Width, o.Height, o.DPR
 	if o.Device != "" {
-		if spec, ok := devicePresets[o.Device]; ok {
-			width, height, dpr = spec.width, spec.height, spec.dpr
+		spec, ok := devicePresets[o.Device]
+		if !ok {
+			return 0, 0, 0, fmt.Errorf("unknown device %q", o.Device)
 		}
+		width, height, dpr = spec.width, spec.height, spec.dpr
 	}
 	return
 }

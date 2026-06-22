@@ -15,7 +15,10 @@ func testLogger(w io.Writer) *log.Logger {
 
 func TestResolveViewport_Defaults(t *testing.T) {
 	o := defaultOptions()
-	w, h, dpr := resolveViewport(o)
+	w, h, dpr, err := resolveViewport(o)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if w != 1920 || h != 1080 || dpr != 1.0 {
 		t.Errorf("got %dx%d dpr=%g, want 1920x1080 dpr=1.0", w, h, dpr)
 	}
@@ -24,21 +27,21 @@ func TestResolveViewport_Defaults(t *testing.T) {
 func TestResolveViewport_DeviceOverride(t *testing.T) {
 	o := defaultOptions()
 	o.Device = DeviceiPhone15
-	w, h, dpr := resolveViewport(o)
+	w, h, dpr, err := resolveViewport(o)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if w != 390 || h != 844 || dpr != 3 {
 		t.Errorf("got %dx%d dpr=%g, want 390x844 dpr=3", w, h, dpr)
 	}
 }
 
-func TestResolveViewport_UnknownDevice_FallsBack(t *testing.T) {
+func TestResolveViewport_UnknownDevice_ReturnsError(t *testing.T) {
 	o := defaultOptions()
 	o.Device = "NonExistent"
-	o.Width = 800
-	o.Height = 600
-	o.DPR = 2.0
-	w, h, dpr := resolveViewport(o)
-	if w != 800 || h != 600 || dpr != 2.0 {
-		t.Errorf("got %dx%d dpr=%g, want 800x600 dpr=2.0", w, h, dpr)
+	_, _, _, err := resolveViewport(o)
+	if err == nil {
+		t.Error("expected error for unknown device, got nil")
 	}
 }
 
@@ -51,7 +54,10 @@ func TestResolveViewport_AllDevices(t *testing.T) {
 		o := defaultOptions()
 		o.Device = dev
 		spec := devicePresets[dev]
-		w, h, dpr := resolveViewport(o)
+		w, h, dpr, err := resolveViewport(o)
+		if err != nil {
+			t.Fatalf("device %s: unexpected error: %v", dev, err)
+		}
 		if w != spec.width || h != spec.height || dpr != spec.dpr {
 			t.Errorf("device %s: got %dx%d dpr=%g, want %dx%d dpr=%g",
 				dev, w, h, dpr, spec.width, spec.height, spec.dpr)
