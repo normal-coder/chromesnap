@@ -282,14 +282,15 @@ func captureScreenshot(ctx context.Context, o *Options, buf *[]byte, format page
 		).Do(ctx); err != nil {
 			return fmt.Errorf("full-page: failed to get page dimensions: %w", err)
 		}
-		if len(dimensions) == 2 {
-			vlog.printf(1, "full-page dimensions=%gx%g", dimensions[0], dimensions[1])
-			params = params.WithCaptureBeyondViewport(true).WithClip(&page.Viewport{
-				X: 0, Y: 0,
-				Width: dimensions[0], Height: dimensions[1],
-				Scale: dpr,
-			})
+		if len(dimensions) != 2 {
+			return fmt.Errorf("full-page: unexpected dimensions count: got %d, want 2", len(dimensions))
 		}
+		vlog.printf(1, "full-page dimensions=%gx%g", dimensions[0], dimensions[1])
+		params = params.WithCaptureBeyondViewport(true).WithClip(&page.Viewport{
+			X: 0, Y: 0,
+			Width: dimensions[0], Height: dimensions[1],
+			Scale: dpr,
+		})
 	} else if o.Selector != "" {
 		mode = "selector"
 		var rect map[string]float64
