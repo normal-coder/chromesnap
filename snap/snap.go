@@ -165,7 +165,14 @@ func buildTasks(rawURL string, o *Options, buf *[]byte, vlog *vLogger) (chromedp
 
 	// Navigate
 	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-		vlog.printf(1, "navigate %s", rawURL)
+		redacted := rawURL
+		if o.BasicAuth != "" {
+			if u, err := url.Parse(rawURL); err == nil {
+				u.User = url.User(u.User.Username())
+				redacted = u.String()
+			}
+		}
+		vlog.printf(1, "navigate %s", redacted)
 		return nil
 	}))
 	tasks = append(tasks, chromedp.Navigate(rawURL))
