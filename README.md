@@ -69,6 +69,7 @@ chromesnap batch urls.txt -o ./shots/ -n "{index}_{host}"
 | `--ignore-cert-errors` | | false | Ignore TLS certificate errors |
 | `--timeout` | `-t` | `30s` | Per-page timeout |
 | `--quiet` | `-q` | false | Suppress log output |
+| `--verbose` | `-v` | | Verbose diagnostics (`-v`: snap events, `-vv`: + chromedp CDP debug) |
 
 ### Snap flags
 
